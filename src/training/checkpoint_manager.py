@@ -47,19 +47,30 @@ def save_adapter_checkpoint(
 
     # 2. Adapter model weights (safetensors preferred, fallback to bin)
     saved_weights = False
+    weights_path = save_path / "adapter_model.safetensors"
     try:
         from safetensors.torch import save_file
         # Ensure contiguous cpu tensors
         clean_state_dict = {
             k: v.contiguous().cpu() for k, v in adapter_state_dict.items()
         }
-        save_file(clean_state_dict, str(save_path / "adapter_model.safetensors"))
+        save_file(clean_state_dict, str(weights_path))
         saved_weights = True
     except ImportError:
         pass
 
     if not saved_weights:
-        torch.save(adapter_state_dict, str(save_path / "adapter_model.bin"))
+        weights_path = save_path / "adapter_model.bin"
+        torch.save(adapter_state_dict, str(weights_path))
+
+    # Compute cryptographic SHA-256 of saved weights file
+    import hashlib
+    sha256_hash = hashlib.sha256()
+    with open(weights_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            sha256_hash.update(chunk)
+    adapter_sha256 = sha256_hash.hexdigest()
+    training_metadata["adapter_sha256"] = adapter_sha256
 
     # 3. training_metadata.json
     with open(save_path / "training_metadata.json", "w", encoding="utf-8") as f:

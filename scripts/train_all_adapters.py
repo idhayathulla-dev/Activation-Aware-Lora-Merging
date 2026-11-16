@@ -97,6 +97,7 @@ def train_all(
     learning_rate: float = None,
     device: str = None,
     preflight: bool = False,
+    backup_dir: str = None,
 ) -> bool:
     if preflight:
         return run_preflight_audit(training_config_path, experiment_config_path, allow_synthetic)
@@ -108,6 +109,8 @@ def train_all(
     print("=" * 70)
     print(" SEQUENTIAL THREE-TASK LoRA TRAINING PIPELINE ")
     print(f" Tasks: {', '.join(tasks)} ")
+    if backup_dir:
+        print(f" Immediate Backup Dir: {backup_dir}")
     print("=" * 70)
 
     for idx, task in enumerate(tasks, 1):
@@ -126,6 +129,18 @@ def train_all(
         if not success:
             print(f"[ERROR] Training failed for task '{task}'. Halting pipeline.")
             return False
+
+        # Immediate persistent backup after each task
+        if backup_dir:
+            import shutil
+            b_path = Path(backup_dir) / "adapters" / task
+            b_path.parent.mkdir(parents=True, exist_ok=True)
+            if b_path.exists():
+                shutil.rmtree(b_path)
+            src_task_dir = Path("artifacts/adapters") / task
+            if src_task_dir.exists():
+                shutil.copytree(src_task_dir, b_path)
+                print(f"[Backup] Immediately mirrored '{task}' checkpoint to: {b_path}")
 
     elapsed = round(time.time() - start_all, 2)
     print("\n" + "=" * 70)
@@ -146,6 +161,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=None, help="Override per-device batch size")
     parser.add_argument("--lr", type=float, default=None, help="Override learning rate")
     parser.add_argument("--device", type=str, default=None, help="Override device ('cpu' or 'cuda')")
+    parser.add_argument("--backup-dir", type=str, default=None, help="Directory to immediately mirror completed checkpoints")
     parser.add_argument("--preflight", action="store_true", help="Run preflight checks without training")
     args = parser.parse_args()
 
@@ -157,7 +173,8 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         learning_rate=args.lr,
         device=args.device,
-        preflight=args.preflight
+        preflight=args.preflight,
+        backup_dir=args.backup_dir
     )
     if not ok:
         sys.exit(1)

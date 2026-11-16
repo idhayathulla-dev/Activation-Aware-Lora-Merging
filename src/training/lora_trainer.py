@@ -6,6 +6,7 @@ Supports both real HuggingFace PEFT models and standalone LoRALinear wrappers fo
 """
 
 import copy
+import json
 import math
 import time
 from pathlib import Path
@@ -301,6 +302,17 @@ class LoRATrainer:
         print(f"  Batch size        : {self.training_config.per_device_train_batch_size}")
         print(f"  Grad Accumulation : {self.training_config.gradient_accumulation_steps}")
 
+        # Write initial training status file to protect against interrupted runs
+        status_file = Path(self.output_dir) / "training_status.json"
+        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+        with open(status_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "task_name": self.task_name,
+                "status": "IN_PROGRESS",
+                "start_time": time.time(),
+                "device": str(self.device),
+            }, f, indent=2)
+
         best_val_loss = float("inf")
         best_state_dict: Optional[Dict[str, torch.Tensor]] = None
         global_step = 0
@@ -381,15 +393,28 @@ class LoRATrainer:
         if best_state_dict is None:
             best_state_dict = extract_lora_state_dict(self.model, self.lora_modules)
 
+        # Compute hardware and optimizer metadata
+        gpu_name = torch.cuda.get_device_name(0) if self.device == "cuda" and torch.cuda.is_available() else "None (CPU)"
+        peak_gpu_mem = round(torch.cuda.max_memory_allocated() / (1024 ** 2), 2) if self.device == "cuda" and torch.cuda.is_available() else 0.0
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
         # Save checkpoint artifacts
         training_meta = {
             "task_name": self.task_name,
             "training_duration_sec": total_duration,
             "total_steps": global_step,
+            "optimizer_steps": global_step,
+            "epochs_completed": self.training_config.num_train_epochs,
             "best_eval_loss": best_val_loss,
             "final_train_loss": avg_train_loss,
+            "checkpoint_selected": "best_validation_loss",
+            "learning_rate": self.training_config.learning_rate,
             "seed": self.training_config.seed,
             "device": str(self.device),
+            "gpu_model": gpu_name,
+            "peak_gpu_memory_mb": peak_gpu_mem,
+            "trainable_parameters": trainable_params,
+            "status": "COMPLETED"
         }
 
         save_adapter_checkpoint(
@@ -408,6 +433,17 @@ class LoRATrainer:
             training_log=self.metrics.to_dict(),
             validation_metrics={"best_eval_loss": best_val_loss, "epoch_history": self.metrics.epoch_history}
         )
+
+        # Update training status file to COMPLETED
+        with open(status_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "task_name": self.task_name,
+                "status": "COMPLETED",
+                "duration_sec": total_duration,
+                "best_eval_loss": best_val_loss,
+                "total_steps": global_step,
+                "completion_time": time.time()
+            }, f, indent=2)
 
         return {
             "best_eval_loss": best_val_loss,

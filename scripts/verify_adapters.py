@@ -82,8 +82,12 @@ def verify_single_adapter(
             r = cfg_data.get("r", cfg_data.get("rank"))
             alpha = cfg_data.get("lora_alpha", cfg_data.get("alpha"))
             targets = cfg_data.get("target_modules", [])
+            base_model = cfg_data.get("base_model_name_or_path", "")
 
             cfg_ok = True
+            if "Qwen2.5-0.5B-Instruct" not in base_model:
+                res["diagnostics"].append(f"Base model mismatch: expected Qwen2.5-0.5B-Instruct, found '{base_model}'")
+                cfg_ok = False
             if r != expected_rank:
                 res["diagnostics"].append(f"Rank mismatch: expected {expected_rank}, found {r}")
                 cfg_ok = False
@@ -96,15 +100,44 @@ def verify_single_adapter(
                     cfg_ok = False
 
             res["config_valid"] = cfg_ok
+            res["base_model"] = base_model
             res["lora_r"] = r
             res["lora_alpha"] = alpha
             res["target_modules"] = targets
         except Exception as e:
             res["diagnostics"].append(f"Error parsing adapter_config.json: {e}")
 
-    # 3. Check weights
+    # Check for interrupted training status
+    status_file = adapter_dir / "training_status.json"
+    if status_file.exists():
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                st_data = json.load(f)
+            st_val = st_data.get("status", "UNKNOWN")
+            res["training_status"] = st_val
+            if st_val == "IN_PROGRESS":
+                res["diagnostics"].append("Training was interrupted before completion (status: IN_PROGRESS)!")
+                res["status_ok"] = False
+            else:
+                res["status_ok"] = True
+        except Exception as e:
+            res["diagnostics"].append(f"Error reading training_status.json: {e}")
+            res["status_ok"] = False
+    else:
+        res["status_ok"] = True  # Not present in legacy mock checkpoints
+
+    # 3. Check weights and compute checksum
     if has_weights:
         try:
+            actual_weights_path = weights_file if weights_file.exists() else adapter_dir / "adapter_model.bin"
+            import hashlib
+            sha = hashlib.sha256()
+            with open(actual_weights_path, "rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    sha.update(chunk)
+            w_sha256 = sha.hexdigest()
+            res["adapter_sha256"] = w_sha256
+
             ckpt = load_adapter_checkpoint(str(adapter_dir))
             state_dict = ckpt["state_dict"]
             res["num_tensors"] = len(state_dict)
@@ -117,9 +150,18 @@ def verify_single_adapter(
                     res["diagnostics"].append(f"Non-finite values found in tensor {k}")
                     weights_ok = False
                 if (tensor == 0).all():
-                    # LoRA B is typically initialized to zeros, but after training it must not remain all zeros!
                     res["diagnostics"].append(f"Tensor {k} is all zeros (untransformed/untrained)!")
                     weights_ok = False
+
+                # Validate LoRA tensor dimensions
+                if "lora_A" in k:
+                    if tensor.ndim != 2 or tensor.shape[0] != expected_rank:
+                        res["diagnostics"].append(f"Invalid lora_A dimension for {k}: {tensor.shape}, expected rank {expected_rank}")
+                        weights_ok = False
+                elif "lora_B" in k:
+                    if tensor.ndim != 2 or tensor.shape[1] != expected_rank:
+                        res["diagnostics"].append(f"Invalid lora_B dimension for {k}: {tensor.shape}, expected rank {expected_rank}")
+                        weights_ok = False
 
             res["parameter_count"] = total_params
             res["weights_valid"] = weights_ok
@@ -130,7 +172,8 @@ def verify_single_adapter(
     res["passed"] = (
         all(res["files_present"].values()) and
         res["config_valid"] and
-        res["weights_valid"]
+        res["weights_valid"] and
+        res.get("status_ok", True)
     )
     return res
 
@@ -165,7 +208,11 @@ def run_cross_task_check(task_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                     identical_tensors += 1
 
             is_distinct = max_diff > 1e-5 and identical_tensors < len(common_keys)
-            if not is_distinct:
+            sha1 = task_results[t1].get("adapter_sha256", "")
+            sha2 = task_results[t2].get("adapter_sha256", "")
+            sha_distinct = (sha1 != sha2) if (sha1 and sha2) else True
+
+            if not is_distinct or not sha_distinct:
                 divergence_report["all_distinct"] = False
 
             divergence_report["comparisons"].append({
@@ -173,7 +220,10 @@ def run_cross_task_check(task_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
                 "common_tensors": len(common_keys),
                 "identical_tensors": identical_tensors,
                 "max_absolute_difference": max_diff,
-                "is_distinct": is_distinct
+                "sha1": sha1[:16] + "..." if sha1 else "N/A",
+                "sha2": sha2[:16] + "..." if sha2 else "N/A",
+                "checksums_distinct": sha_distinct,
+                "is_distinct": is_distinct and sha_distinct
             })
 
     return divergence_report
