@@ -17,22 +17,31 @@ This guide details the exact procedure for training authentic, production-grade 
 
 ---
 
-## 2. Step 1: Clone & Setup Environment in Colab
+## 2. Step 1: Runtime Setup & Persistent Storage in Colab
 
 In your first Google Colab cell:
 
-```bash
-# Check GPU presence
-!nvidia-smi
+```python
+# 1. Mount Google Drive for persistent artifact preservation
+from google.colab import drive
+drive.mount('/content/drive')
+!mkdir -p /content/drive/MyDrive/activation_aware_lora_merging_artifacts
 
-# Clone repository
+# 2. Check GPU presence & system resources
+import torch
+print("PyTorch Version:", torch.__version__)
+print("CUDA Available:", torch.cuda.is_available())
+if not torch.cuda.is_available():
+    raise SystemError("CUDA GPU is required! Change runtime type to T4, V100, or A100 GPU.")
+print("GPU Hardware:", torch.cuda.get_device_name(0))
+
+# 3. Clone repository and checkout verified baseline commit
 !git clone https://github.com/your-username/activation-aware-lora-merging.git
 %cd activation-aware-lora-merging
+!git checkout a11929c8b14c38eec7cdf2b5014b99a22e13cff5
 
-# Install dependencies with full CUDA support
-!pip install --upgrade pip
-!pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-!pip install transformers datasets accelerate peft safetensors pyyaml pytest scipy
+# 4. Install compatible dependencies (without breaking Colab's CUDA PyTorch)
+!pip install -q transformers peft datasets accelerate safetensors pyyaml pytest scipy psutil
 ```
 
 ---
@@ -106,10 +115,10 @@ Alternatively, train individual tasks:
 
 ## 6. Step 5: Verify Saved Adapter Checkpoints
 
-Run the automated verification suite to validate weights and operational integrity:
+Run the automated verification suite to validate weights, PEFT reloading, and forward inference:
 
 ```bash
-!python scripts/verify_adapters.py --adapters-dir artifacts/adapters
+!python scripts/verify_adapters.py --device cuda
 ```
 
 **Audit Checks Performed:**
@@ -117,23 +126,28 @@ Run the automated verification suite to validate weights and operational integri
 2. **LoRA Parity**: Verifies $r=8, \alpha=16$, target modules `['q_proj', 'v_proj']`.
 3. **Weight Numerical Health**: Confirms all weights are finite (no NaN, no Inf, non-zero).
 4. **Cross-Task Distinctness**: Confirms adapters are mathematically distinct and divergent across tasks ($\max |\Delta W_i - \Delta W_j| > 0$).
-5. **Forward Smoke Test**: Injects adapters into base model, runs forward inference, and confirms finite logits.
+5. **Authentic Forward Smoke Test**: Loads base model, attaches each adapter via PEFT, and verifies forward pass produces finite logits.
 
 ---
 
-## 7. Step 6: Package & Download Checkpoints
+## 7. Step 6: Backup Checkpoints to Google Drive
 
-Compress the verified artifacts to your local machine or Google Drive:
+Mirror the verified artifacts to your permanent Google Drive storage:
 
 ```python
-from google.colab import files
 import shutil
+from pathlib import Path
 
-# Zip artifacts
-shutil.make_archive("artifacts_stage_ef", "zip", "artifacts")
-
-# Download zip file
-files.download("artifacts_stage_ef.zip")
+persistent_dir = Path("/content/drive/MyDrive/activation_aware_lora_merging_artifacts")
+for sub in ["adapters", "provenance", "experiment"]:
+    src = Path(f"artifacts/{sub}")
+    dst = persistent_dir / sub
+    if src.exists():
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+        print(f"Backed up {src} -> {dst}")
+print("Backup complete. Checkpoints are safely preserved in Google Drive.")
 ```
 
 ---

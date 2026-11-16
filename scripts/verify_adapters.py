@@ -181,40 +181,66 @@ def run_cross_task_check(task_results: Dict[str, Dict[str, Any]]) -> Dict[str, A
 
 def run_forward_smoke_test(
     adapter_results: Dict[str, Dict[str, Any]],
-    prefer_mock: bool = True
+    prefer_mock: bool = False,
+    device: str = "cpu"
 ) -> Dict[str, Any]:
-    """Runs a quick forward pass with each adapter to verify operational health."""
+    """Runs a genuine forward pass with each adapter attached to verify operational health."""
     smoke_results = {}
-    try:
-        model, tokenizer, _ = load_model_and_tokenizer(
-            model_name_or_path="Qwen/Qwen2.5-0.5B-Instruct",
-            device="cpu",
-            prefer_mock=prefer_mock
-        )
+    test_prompt = "Question: What is 2 + 2?\nAnswer: 4"
 
-        test_prompt = "Question: What is 2 + 2?\nAnswer:"
-        tokens = tokenizer(test_prompt, return_tensors="pt")
+    for task_name, res in adapter_results.items():
+        if not res.get("passed", False):
+            smoke_results[task_name] = {"passed": False, "error": "Adapter failed basic verification"}
+            continue
 
-        for task_name, res in adapter_results.items():
-            if not res.get("passed", False):
-                smoke_results[task_name] = {"passed": False, "error": "Adapter failed basic verification"}
-                continue
+        adapter_dir = Path(res["adapter_dir"])
+        try:
+            # 1. Load base model and tokenizer
+            base_model, tokenizer, meta = load_model_and_tokenizer(
+                model_name_or_path="Qwen/Qwen2.5-0.5B-Instruct",
+                device=device,
+                prefer_mock=prefer_mock
+            )
+            tokens = tokenizer(test_prompt, return_tensors="pt")
+            if device == "cuda" and torch.cuda.is_available():
+                tokens = {k: v.cuda() for k, v in tokens.items()}
 
-            try:
-                # Forward pass through model
-                outputs = model(**tokens)
+            is_mock = meta.get("is_mock", False)
+            if not is_mock:
+                # Authentic PEFT model reload
+                from peft import PeftModel
+                peft_model = PeftModel.from_pretrained(base_model, str(adapter_dir))
+                peft_model.eval()
+                with torch.no_grad():
+                    outputs = peft_model(**tokens)
                 logits = outputs.logits
-                finite = torch.isfinite(logits).all().item()
-                smoke_results[task_name] = {
-                    "passed": finite,
-                    "output_shape": list(logits.shape),
-                    "logits_finite": finite
-                }
-            except Exception as e:
-                smoke_results[task_name] = {"passed": False, "error": str(e)}
+            else:
+                # Mock model injection
+                lora_cfg = LoRAConfig(
+                    rank=res.get("lora_r", 8),
+                    alpha=res.get("lora_alpha", 16),
+                    target_modules=res.get("target_modules", ["q_proj", "v_proj"])
+                )
+                mock_model, lora_mods = inject_lora_into_model(base_model, lora_cfg)
+                ckpt = load_adapter_checkpoint(str(adapter_dir))
+                # Adapt keys if needed
+                state_dict = ckpt["state_dict"]
+                mock_model.load_state_dict(state_dict, strict=False)
+                mock_model.eval()
+                with torch.no_grad():
+                    outputs = mock_model(**tokens)
+                logits = outputs.logits
 
-    except Exception as e:
-        smoke_results["general_error"] = str(e)
+            finite = torch.isfinite(logits).all().item()
+            smoke_results[task_name] = {
+                "passed": finite,
+                "output_shape": list(logits.shape),
+                "logits_finite": finite,
+                "is_mock": is_mock,
+                "device": str(device)
+            }
+        except Exception as e:
+            smoke_results[task_name] = {"passed": False, "error": str(e)}
 
     return smoke_results
 
@@ -223,7 +249,9 @@ def run_adapter_verification(
     adapters_base_dir: str = "artifacts/adapters",
     output_report_path: str = "artifacts/experiment/adapter_verification.json",
     tasks: Optional[List[str]] = None,
-    smoke_test: bool = True
+    smoke_test: bool = True,
+    device: str = "cpu",
+    prefer_mock: bool = False
 ) -> bool:
     print("=" * 70)
     print(" INDEPENDENT LoRA ADAPTER VERIFICATION & HEALTH AUDIT ")
@@ -271,8 +299,8 @@ def run_adapter_verification(
     # Smoke test
     smoke_res = {}
     if smoke_test:
-        print("\n[Forward Pass Smoke Test]")
-        smoke_res = run_forward_smoke_test(task_results)
+        print(f"\n[Forward Pass Smoke Test] (device={device}, prefer_mock={prefer_mock})")
+        smoke_res = run_forward_smoke_test(task_results, prefer_mock=prefer_mock, device=device)
         for t in tasks:
             s_ok = smoke_res.get(t, {}).get("passed", False)
             print(f"  {t:<18}: {'PASSED' if s_ok else 'FAILED'} (Logits finite: {smoke_res.get(t, {}).get('logits_finite', False)})")
@@ -308,6 +336,8 @@ if __name__ == "__main__":
     parser.add_argument("--adapters-dir", type=str, default="artifacts/adapters", help="Base directory of adapters")
     parser.add_argument("--output-report", type=str, default="artifacts/experiment/adapter_verification.json", help="Path for JSON report")
     parser.add_argument("--tasks", nargs="+", default=["boolq", "gsm8k", "arc_easy"], help="List of tasks to verify")
+    parser.add_argument("--device", type=str, default="cpu", help="Device for forward pass (cpu or cuda)")
+    parser.add_argument("--prefer-mock", action="store_true", help="Use mock model rather than loading real Qwen base weights")
     parser.add_argument("--no-smoke", action="store_true", help="Skip forward pass smoke test")
     args = parser.parse_args()
 
@@ -315,7 +345,9 @@ if __name__ == "__main__":
         adapters_base_dir=args.adapters_dir,
         output_report_path=args.output_report,
         tasks=args.tasks,
-        smoke_test=not args.no_smoke
+        smoke_test=not args.no_smoke,
+        device=args.device,
+        prefer_mock=args.prefer_mock
     )
     if not ok:
         sys.exit(1)
