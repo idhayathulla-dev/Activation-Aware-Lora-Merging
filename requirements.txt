@@ -1,0 +1,18 @@
+# Core Deep Learning and Hugging Face Stack
+torch>=2.0.0
+transformers>=4.40.0
+peft>=0.10.0
+datasets>=2.18.0
+accelerate>=0.28.0
+
+# Scientific Computing & Matrix Operations
+numpy>=1.24.0
+scipy>=1.10.0
+pandas>=2.0.0
+pyyaml>=6.0
+tqdm>=4.65.0
+safetensors>=0.4.0
+
+# Testing & Reproducibility
+pytest>=7.0.0
+psutil>=5.9.0

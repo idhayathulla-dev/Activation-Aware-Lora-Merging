@@ -1,0 +1,15 @@
+calibration:
+  num_examples_per_task: 128
+  max_seq_length: 512
+  batch_size: 4
+  target_modules:
+    - "q_proj"
+    - "v_proj"
+  regularization:
+    alpha: 0.001
+    ablation_alphas:
+      - 0.0001
+      - 0.001
+      - 0.01
+  save_path: "results/processed/covariances.pt"
+  balanced: true

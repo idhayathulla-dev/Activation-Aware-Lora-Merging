@@ -1,0 +1,161 @@
+{
+  "boolq": {
+    "task_name": "boolq",
+    "dataset_name": "google/boolq",
+    "dataset_config": null,
+    "dataset_revision": "35b264d03638db9f4ce671b711558bf7ff0f80d5",
+    "preprocessing_version": "2.1.0",
+    "source": "huggingface",
+    "source_splits": {
+      "train": "train",
+      "evaluation": "validation"
+    },
+    "is_synthetic": false,
+    "seed": 42,
+    "original_source_counts": {
+      "train": 9427,
+      "evaluation": 3270
+    },
+    "excluded_duplicates_count": 0,
+    "excluded_duplicates": [],
+    "split_sizes": {
+      "train": 9199,
+      "calibration": 128,
+      "validation": 100,
+      "evaluation": 3270
+    },
+    "content_fingerprints": {
+      "train": "4c73b06d546e0823601c4841924c1d7ff04020518816f1433c87fa4ff653c407",
+      "calibration": "e122507e189a02fd00cc23e363ee39e842c765f21a74564af1d938a1bd273003",
+      "validation": "f537e8f6d6abe7b24bb48e8bf1a229a89438c9b93aeff2f3d042d4522087cdd0",
+      "evaluation": "b814b6b952bf050a1cacdaf039b89316f3758ca5fd9f86b6d533d26b2afaa106"
+    },
+    "integrity_audit": {
+      "task_name": "boolq",
+      "integrity_passed": true,
+      "leakage_detected": false,
+      "violations": [],
+      "partition_sizes": {
+        "train": 9199,
+        "calibration": 128,
+        "validation": 100,
+        "evaluation": 3270
+      }
+    }
+  },
+  "gsm8k": {
+    "task_name": "gsm8k",
+    "dataset_name": "openai/gsm8k",
+    "dataset_config": "main",
+    "dataset_revision": "740312add88f781978c0658806c59bc2815b9866",
+    "preprocessing_version": "2.1.0",
+    "source": "huggingface",
+    "source_splits": {
+      "train": "train",
+      "evaluation": "test"
+    },
+    "is_synthetic": false,
+    "seed": 42,
+    "original_source_counts": {
+      "train": 7473,
+      "evaluation": 1319
+    },
+    "excluded_duplicates_count": 0,
+    "excluded_duplicates": [],
+    "split_sizes": {
+      "train": 7245,
+      "calibration": 128,
+      "validation": 100,
+      "evaluation": 1319
+    },
+    "content_fingerprints": {
+      "train": "40dfd238d68d973145d97da1ddbf1c8287cab63f1a4d35963b85f1650983802b",
+      "calibration": "29e626e3b28b6a8edff3b2700e3525eadd30a882c389516bee4c95fdc0ad9e9c",
+      "validation": "2bb0b261cf1e35ceaa1c6a509db43b96e6fb6a7f8f79b462415402145d855c1f",
+      "evaluation": "cc606eb92fba021c244fa7c269b5f876bb0b1b235324031e745ae95947facab0"
+    },
+    "integrity_audit": {
+      "task_name": "gsm8k",
+      "integrity_passed": true,
+      "leakage_detected": false,
+      "violations": [],
+      "partition_sizes": {
+        "train": 7245,
+        "calibration": 128,
+        "validation": 100,
+        "evaluation": 1319
+      }
+    }
+  },
+  "arc_easy": {
+    "task_name": "arc_easy",
+    "dataset_name": "allenai/ai2_arc",
+    "dataset_config": "ARC-Easy",
+    "dataset_revision": "210d026faf9955653af8916fad021475a3f00453",
+    "preprocessing_version": "2.1.0",
+    "source": "huggingface",
+    "source_splits": {
+      "train": "train",
+      "validation": "validation",
+      "evaluation": "test"
+    },
+    "is_synthetic": false,
+    "seed": 42,
+    "original_source_counts": {
+      "train": 2251,
+      "validation": 570,
+      "evaluation": 2376
+    },
+    "excluded_duplicates_count": 2,
+    "excluded_duplicates": [
+      {
+        "train_index": 1087,
+        "train_id": "CSZ_2009_8_CSZ30768",
+        "matched_split": "test",
+        "matched_index": 242,
+        "matched_id": "CSZ30768",
+        "question": "Which of the following elements is best able to combine with itself and hydrogen [H] to form large molecules?",
+        "train_target": "D",
+        "eval_target": "D",
+        "is_conflicting": false,
+        "exclusion_reason": "duplicate_of_official_evaluation"
+      },
+      {
+        "train_index": 2246,
+        "train_id": "CSZ_2009_8_CSZ20770",
+        "matched_split": "test",
+        "matched_index": 493,
+        "matched_id": "CSZ20770",
+        "question": "Iron oxides, such as rust, form when iron metal reacts with oxygen in the air. What are the chemical symbols for the two",
+        "train_target": "C",
+        "eval_target": "C",
+        "is_conflicting": false,
+        "exclusion_reason": "duplicate_of_official_evaluation"
+      }
+    ],
+    "split_sizes": {
+      "train": 2121,
+      "calibration": 128,
+      "validation": 570,
+      "evaluation": 2376
+    },
+    "content_fingerprints": {
+      "train": "dc749131fa06af1d1b064a5f495e7eff83197a1a8ca5c72dff9aff529252a8ef",
+      "calibration": "202163cb3c0d02937caf774841845af5ae3670a7d5b73efdafbd548052d24d15",
+      "validation": "23aca3f257b4f965b988ed8be47c2f802c3b91b3c046686bfe13567ee660b475",
+      "evaluation": "33ffc4961089d5c8a68e850992388016582b1b1dee54eaa7a7e161ec13f0700c"
+    },
+    "integrity_audit": {
+      "task_name": "arc_easy",
+      "integrity_passed": true,
+      "leakage_detected": false,
+      "violations": [],
+      "partition_sizes": {
+        "train": 2121,
+        "calibration": 128,
+        "validation": 570,
+        "evaluation": 2376
+      }
+    }
+  }
+}

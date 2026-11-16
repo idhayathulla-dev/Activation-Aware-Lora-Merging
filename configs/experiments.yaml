@@ -1,0 +1,41 @@
+experiments:
+  rank_budgets:
+    - 4
+    - 8
+    - 16
+  seeds:
+    - 42
+  methods:
+    - name: "base_zero_shot"
+      type: "base"
+    - name: "individual_adapters"
+      type: "individual"
+    - name: "task_arithmetic"
+      type: "task_arithmetic"
+      weights: [0.3333, 0.3333, 0.3333]
+    - name: "ties"
+      type: "ties"
+      trim_fraction: 0.2
+      weights: [0.3333, 0.3333, 0.3333]
+    - name: "knots_task_arithmetic"
+      type: "knots"
+      inner_method: "task_arithmetic"
+    - name: "knots_ties"
+      type: "knots"
+      inner_method: "ties"
+      trim_fraction: 0.2
+    - name: "activation_aware_knots_task_arithmetic"
+      type: "activation_aware_knots"
+      inner_method: "task_arithmetic"
+      reg_alpha: 0.001
+    - name: "activation_aware_knots_ties"
+      type: "activation_aware_knots"
+      inner_method: "ties"
+      trim_fraction: 0.2
+      reg_alpha: 0.001
+
+evaluation:
+  batch_size: 4
+  max_new_tokens: 256
+  temperature: 0.0
+  eval_samples_per_task: 200 # Pilot evaluation limit

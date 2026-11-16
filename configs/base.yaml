@@ -1,0 +1,13 @@
+model:
+  name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
+  revision: "main"
+  torch_dtype: "bfloat16" # fallback to float32 on CPU
+  device_map: "auto"
+  trust_remote_code: true
+
+environment:
+  seed: 42
+  deterministic: true
+  output_dir: "./outputs"
+  logs_dir: "./logs"
+  results_dir: "./results"

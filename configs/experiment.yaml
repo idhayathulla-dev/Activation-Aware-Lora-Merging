@@ -1,0 +1,50 @@
+experiment:
+  name: "activation_aware_lora_merging"
+  mode: "final" # "final" (requires real HF data) or "development" (allows synthetic)
+  allow_synthetic: false
+  require_real_huggingface_data: true
+  seed: 42
+  preprocessing_version: "2.1.0"
+
+base_model:
+  name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
+  revision: "main"
+  torch_dtype: "bfloat16" # fallback to float32 on CPU
+
+tasks:
+  boolq:
+    dataset: "google/boolq"
+    config: null
+    source_splits:
+      train: "train"
+      evaluation: "validation"
+    splits:
+      calibration: 128
+      validation: 100
+      train: "remaining_train"
+      evaluation: "official_evaluation"
+  gsm8k:
+    dataset: "openai/gsm8k"
+    config: "main"
+    source_splits:
+      train: "train"
+      evaluation: "test"
+    splits:
+      calibration: 128
+      validation: 100
+      train: "remaining_train"
+      evaluation: "official_evaluation"
+  arc_easy:
+    dataset: "allenai/ai2_arc"
+    config: "ARC-Easy"
+    source_splits:
+      train: "train"
+      validation: "validation"
+      evaluation: "test"
+    splits:
+      calibration: 128
+      validation: "official_validation"
+      train: "remaining_train"
+      evaluation: "official_evaluation"
+
+artifacts_dir: "artifacts"
