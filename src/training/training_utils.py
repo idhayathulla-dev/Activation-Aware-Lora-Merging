@@ -35,6 +35,18 @@ def detect_hardware() -> Dict[str, Any]:
         "bf16_supported": torch.cuda.is_bf16_supported() if cuda_avail else False,
     }
 
+    if cuda_avail:
+        try:
+            prop = torch.cuda.get_device_properties(0)
+            hw_info["gpu_total_vram_gb"] = round(prop.total_memory / (1024 ** 3), 2)
+            hw_info["gpu_free_vram_gb"] = round((prop.total_memory - torch.cuda.memory_allocated()) / (1024 ** 3), 2)
+        except Exception:
+            hw_info["gpu_total_vram_gb"] = 0.0
+            hw_info["gpu_free_vram_gb"] = 0.0
+    else:
+        hw_info["gpu_total_vram_gb"] = 0.0
+        hw_info["gpu_free_vram_gb"] = 0.0
+
     try:
         import psutil
         vm = psutil.virtual_memory()

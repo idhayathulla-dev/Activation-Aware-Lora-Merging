@@ -8,12 +8,14 @@ This guide details the exact procedure for training authentic, production-grade 
 
 | Requirement | Specification |
 |---|---|
-| **Platform** | Google Colab (Free T4 GPU or Colab Pro A100/V100) |
+| **Platform** | Google Colab (Standard T4 16GB GPU or Colab Pro A100/V100) |
+| **VRAM Note** | The 6 GB VRAM threshold is an initial lower-bound preflight heuristic. Real peak memory depends on dynamic sequence lengths (up to 512 tokens), activation caching, and precision. A standard T4 (15–16 GB) is strongly recommended. |
 | **CUDA Driver** | $\ge 12.1$ |
 | **Python** | $\ge 3.10$ |
 | **Base Model** | `Qwen/Qwen2.5-0.5B-Instruct` |
 | **Precision** | `bfloat16` (or `float16` on T4) |
 | **Tasks** | `google/boolq`, `openai/gsm8k` (main), `allenai/ai2_arc` (ARC-Easy) |
+| **Target Commit SHA** | `c7c6d62d3f8ebf547b71028327c9f7674960548a` |
 
 ---
 
@@ -35,10 +37,10 @@ if not torch.cuda.is_available():
     raise SystemError("CUDA GPU is required! Change runtime type to T4, V100, or A100 GPU.")
 print("GPU Hardware:", torch.cuda.get_device_name(0))
 
-# 3. Clone repository and checkout verified baseline commit
+# 3. Clone repository and checkout verified commit
 !git clone https://github.com/your-username/activation-aware-lora-merging.git
 %cd activation-aware-lora-merging
-!git checkout a11929c8b14c38eec7cdf2b5014b99a22e13cff5
+!git checkout c7c6d62d3f8ebf547b71028327c9f7674960548a
 
 # 4. Install compatible dependencies (without breaking Colab's CUDA PyTorch)
 !pip install -q transformers peft datasets accelerate safetensors pyyaml pytest scipy psutil
@@ -79,29 +81,24 @@ Run the multi-adapter preflight check to confirm GPU memory and hyperparameter p
 
 ---
 
-## 5. Step 4: Train All 3 LoRA Adapters Sequentially
+## 5. Step 4: Execute Unified Multi-Adapter Training Pipeline
 
-Execute full adapter training across all three tasks:
+Execute full automated adapter training across all three tasks using the primary unified command:
 
 ```bash
 !python scripts/train_all_adapters.py \
     --config configs/training.yaml \
     --experiment-config configs/experiment.yaml \
-    --device cuda
+    --device cuda \
+    --backup-dir /content/drive/MyDrive/activation_aware_lora_merging_artifacts
 ```
 
-Alternatively, train individual tasks:
-
-```bash
-# 1. BoolQ (Yes/No Question Answering)
-!python scripts/train_adapter.py --task boolq --device cuda
-
-# 2. GSM8K (Multi-step Grade School Math Reasoning)
-!python scripts/train_adapter.py --task gsm8k --device cuda
-
-# 3. ARC-Easy (Science Multiple-Choice Reasoning)
-!python scripts/train_adapter.py --task arc_easy --device cuda
-```
+### What this unified pipeline guarantees:
+1. **Clean Directory Reset:** If any task was interrupted previously, its staging directory is cleanly wiped prior to training to eliminate stale or partial files.
+2. **Sequential Execution:** Trains BoolQ, GSM8K, and ARC-Easy with identical hyperparameters ($r=8, \alpha=16, lr=2\times 10^{-4}$, 3 epochs, batch size 4, gradient accumulation 4).
+3. **Immediate Per-Task Verification:** Directly verifies weights, dimensions, and finite numbers via `verify_single_adapter` the moment each task finishes.
+4. **Immediate Google Drive Mirroring:** Backs up each verified adapter to `/content/drive/MyDrive/.../adapters/<task>/` before starting the next task.
+5. **Joint Verification:** Runs cross-task divergence audit and reports overall health.
 
 ### Training Parameters (configs/training.yaml):
 - **Base Model**: `Qwen/Qwen2.5-0.5B-Instruct`

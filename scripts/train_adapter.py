@@ -152,6 +152,15 @@ def train_single_adapter(
     print("\n[3/4] Loading base model and tokenizer...")
     model_name = exp_cfg.base_model
     prefer_mock = is_development and (not hw_info["cuda_available"])
+
+    # 5b. Safe directory reset: restart cleanly to prevent mixing partial, interrupted, or stale artifacts
+    if not dry_run and output_path.exists():
+        existing_artifacts = list(output_path.glob("*"))
+        if existing_artifacts:
+            print(f"  [Clean Restart] Resetting '{output_path}' ({len(existing_artifacts)} stale/partial files removed to ensure clean run)...")
+            import shutil
+            shutil.rmtree(output_path)
+            output_path.mkdir(parents=True, exist_ok=True)
     
     model, tokenizer, _ = load_model_and_tokenizer(
         model_name_or_path=model_name,

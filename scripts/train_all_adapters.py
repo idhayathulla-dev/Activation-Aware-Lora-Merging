@@ -45,6 +45,13 @@ def run_preflight_audit(
     print(f"Total RAM (GB)     : {hw['total_memory_gb']:.2f}")
     print(f"Free RAM (GB)      : {hw['free_memory_gb']:.2f}")
     print(f"CUDA Available     : {hw['cuda_available']}")
+    if hw["cuda_available"]:
+        print(f"GPU Total VRAM     : {hw.get('gpu_total_vram_gb', 0.0):.2f} GB")
+        print(f"GPU Free VRAM      : {hw.get('gpu_free_vram_gb', 0.0):.2f} GB")
+        print(f"VRAM Note          : Note: The 6 GB threshold is a lower-bound preflight heuristic.")
+        print(f"                     Actual VRAM requirement depends on batching (b=4, accum=4),")
+        print(f"                     dynamic sequence padding (up to 512), and precision.")
+        print(f"                     Standard Colab T4 (15-16 GB) or A100 is recommended.")
 
     training_cfg, lora_cfg = load_training_config(training_config_path)
     exp_cfg = load_experiment_config(experiment_config_path)
@@ -130,25 +137,57 @@ def train_all(
             print(f"[ERROR] Training failed for task '{task}'. Halting pipeline.")
             return False
 
-        # Immediate persistent backup after each task
+        # Immediate verification of the trained adapter
+        print(f"\n[Immediate Verification] Auditing '{task}' adapter integrity...")
+        from scripts.verify_adapters import verify_single_adapter
+        src_task_dir = Path("artifacts/adapters") / task
+        v_res = verify_single_adapter(src_task_dir, task)
+        if not v_res["passed"]:
+            print(f"[ERROR] Immediate verification failed for task '{task}': {v_res.get('diagnostics')}. Halting pipeline.")
+            return False
+        print(f"  [Verification PASSED] r={v_res.get('lora_r')}, alpha={v_res.get('lora_alpha')}, params={v_res.get('parameter_count')}, sha256={v_res.get('adapter_sha256', 'N/A')[:16]}...")
+
+        # Immediate persistent backup after each verified task
         if backup_dir:
             import shutil
             b_path = Path(backup_dir) / "adapters" / task
             b_path.parent.mkdir(parents=True, exist_ok=True)
             if b_path.exists():
                 shutil.rmtree(b_path)
-            src_task_dir = Path("artifacts/adapters") / task
-            if src_task_dir.exists():
-                shutil.copytree(src_task_dir, b_path)
-                print(f"[Backup] Immediately mirrored '{task}' checkpoint to: {b_path}")
+            shutil.copytree(src_task_dir, b_path)
+            print(f"[Backup Certified] Immediately mirrored verified '{task}' checkpoint to: {b_path}")
 
     elapsed = round(time.time() - start_all, 2)
     print("\n" + "=" * 70)
-    print(f" ALL 3 ADAPTERS TRAINED SUCCESSFULLY IN {elapsed}s ")
+    print(f" ALL 3 ADAPTERS TRAINED & INDIVIDUALLY VERIFIED IN {elapsed}s ")
     print(" Results Summary:")
     for t, res in results.items():
         print(f"  - {t:<12}: {'SUCCESS' if res else 'FAILED'}")
     print("=" * 70)
+
+    # Full joint verification across all tasks
+    print("\n[Running Joint Multi-Adapter Verification & Cross-Task Divergence Check]...")
+    from scripts.verify_adapters import run_adapter_verification
+    full_verif_passed = run_adapter_verification(
+        adapters_base_dir="artifacts/adapters",
+        tasks=tasks,
+        device=device or "cpu"
+    )
+    if not full_verif_passed:
+        print("[ERROR] Joint multi-adapter verification failed!")
+        return False
+
+    # Backup full verification report to backup_dir if provided
+    if backup_dir:
+        import shutil
+        exp_src = Path("artifacts/experiment")
+        if exp_src.exists():
+            exp_dst = Path(backup_dir) / "experiment"
+            exp_dst.mkdir(parents=True, exist_ok=True)
+            for f in exp_src.glob("*"):
+                shutil.copy2(f, exp_dst / f.name)
+            print(f"[Backup Certified] Mirrored experiment verification reports to: {exp_dst}")
+
     return True
 
 
