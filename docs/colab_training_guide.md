@@ -37,10 +37,9 @@ if not torch.cuda.is_available():
     raise SystemError("CUDA GPU is required! Change runtime type to T4, V100, or A100 GPU.")
 print("GPU Hardware:", torch.cuda.get_device_name(0))
 
-# 3. Clone repository and checkout verified commit
-!git clone https://github.com/your-username/activation-aware-lora-merging.git
-%cd activation-aware-lora-merging
-!git checkout c7c6d62d3f8ebf547b71028327c9f7674960548a
+# 3. Clone repository and enter project directory
+!git clone https://github.com/idhayathulla-dev/Activation-Aware-Lora-Merging.git
+%cd Activation-Aware-Lora-Merging
 
 # 4. Install compatible dependencies (without breaking Colab's CUDA PyTorch)
 !pip install -q transformers peft datasets accelerate safetensors pyyaml pytest scipy psutil
