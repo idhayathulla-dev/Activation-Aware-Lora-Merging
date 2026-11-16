@@ -138,6 +138,27 @@ class MockTokenizer:
         return " ".join(f"token_{tid}" for tid in token_ids if tid != self.pad_token_id)
 
 
+def resolve_torch_dtype(torch_dtype: Optional[str] = None, device: str = "cpu") -> torch.dtype:
+    """
+    Resolves the torch dtype based on requested precision and hardware capability.
+    Falls back gracefully from BF16 to FP16 on CUDA devices lacking native BF16 support (e.g. Tesla T4).
+    """
+    if torch_dtype is None:
+        return torch.bfloat16 if (device == "cuda" and torch.cuda.is_available() and torch.cuda.is_bf16_supported()) else torch.float32
+    elif torch_dtype == "bfloat16":
+        if device == "cuda" and torch.cuda.is_available():
+            if torch.cuda.is_bf16_supported():
+                return torch.bfloat16
+            else:
+                print("[ModelLoader] BF16 requested but not supported on this CUDA device (e.g. Tesla T4). Falling back to FP16.")
+                return torch.float16
+        return torch.float32
+    elif torch_dtype == "float16":
+        return torch.float16 if (device == "cuda" and torch.cuda.is_available()) else torch.float32
+    else:
+        return torch.float32
+
+
 def load_model_and_tokenizer(
     model_name_or_path: str = "Qwen/Qwen2.5-0.5B-Instruct",
     revision: str = "main",
@@ -165,14 +186,7 @@ def load_model_and_tokenizer(
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if torch_dtype is None:
-        selected_dtype = torch.bfloat16 if (device == "cuda" and torch.cuda.is_bf16_supported()) else torch.float32
-    elif torch_dtype == "bfloat16":
-        selected_dtype = torch.bfloat16 if device == "cuda" else torch.float32
-    elif torch_dtype == "float16":
-        selected_dtype = torch.float16 if device == "cuda" else torch.float32
-    else:
-        selected_dtype = torch.float32
+    selected_dtype = resolve_torch_dtype(torch_dtype, device)
 
     model = None
     tokenizer = None
@@ -181,6 +195,8 @@ def load_model_and_tokenizer(
     if prefer_mock:
         tokenizer = MockTokenizer()
         model = MockQwenModel()
+        if selected_dtype != torch.float32:
+            model = model.to(selected_dtype)
         if device == "cuda" and torch.cuda.is_available():
             model = model.cuda()
         is_mock = True

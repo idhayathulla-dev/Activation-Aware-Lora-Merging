@@ -96,8 +96,10 @@ class StandaloneLoRALinear(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         base_out = self.base_layer(x)
-        lora_out = self.lora_B(self.lora_A(self.lora_dropout(x))) * self.scaling
-        return base_out + lora_out
+        adapter_dtype = self.lora_A.weight.dtype
+        lora_in = self.lora_dropout(x).to(adapter_dtype)
+        lora_out = self.lora_B(self.lora_A(lora_in)) * self.scaling
+        return base_out + lora_out.to(base_out.dtype)
 
 
 def inject_lora_into_model(
